@@ -14,7 +14,8 @@ import Distribution.PackageDescription
 import Distribution.Pretty(prettyShow)
 import Distribution.Simple
 import Distribution.Simple.InstallDirs (InstallDirs(..))
-import Distribution.Simple.LocalBuildInfo (LocalBuildInfo, localPkgDescr, installedPkgs, withPrograms, buildDir, absoluteInstallDirs)
+import Distribution.Simple.LocalBuildInfo (LocalBuildInfo, localPkgDescr, installedPkgs, withPrograms, buildDir, absoluteInstallDirs
+                                          , compiler)
 import Distribution.Simple.PackageIndex(SearchResult (..), searchByName )
 import Distribution.Simple.Program (ConfiguredProgram (..), lookupProgram, runProgram, simpleProgram, locationPath)
 import Distribution.Simple.Setup ( BuildFlags, ConfigFlags
@@ -22,12 +23,12 @@ import Distribution.Simple.Setup ( BuildFlags, ConfigFlags
                                  , InstallFlags, installVerbosity
                                  , fromFlag, fromFlagOrDefault, copyDest
                                  )
-import Distribution.Simple.Utils ( die
-                                 , installOrdinaryFile
+import Distribution.Simple.Utils ( installOrdinaryFile
                                  , IOData(..)
                                  , IODataMode(..)
                                  , rawSystemExitWithEnv
                                  , rawSystemStdInOut
+                                 , dieNoVerbosity
                                  )
 import Distribution.System (OS (..), Arch (..), buildOS, buildArch)
 import Distribution.Verbosity (Verbosity, normal, verbose)
@@ -87,8 +88,7 @@ rawShellSystemStdInOut :: Verbosity                     -- Verbosity level
                        -> [String]                      -- Command arguments
                        -> IO (String, String, ExitCode) -- (Command result, Errors, Command exit status)
 rawShellSystemStdInOut v f as =
-    rawSystemStdInOut v "sh" (f:as) Nothing Nothing Nothing IODataModeText >>=
-    \(IODataText result, errors, exitStatus) -> return (result, errors, exitStatus)
+    rawSystemStdInOut v "sh" (f:as) Nothing Nothing Nothing IODataModeText
 
 isWindowsMsys :: IO Bool
 isWindowsMsys = (buildOS == Windows&&) . isJust <$> lookupEnv "MSYSTEM"
@@ -124,17 +124,19 @@ myConfHook (pkg0, pbi) flags = do
     let lib       = fromJust (library lpd)
     let libbi     = libBuildInfo lib
     let custom_bi = customFieldsBI libbi
-
+    let bdr       = buildDir lbi
     wx <- fmap parseWxConfig (readWxConfig wxVersion) >>= deMsysPaths
-
+    -- print (extraLibs libbi)
+    -- print (extraLibs wx)
+    -- error "STOP"
     let libbi' = libbi
-          { extraLibDirs = extraLibDirs libbi ++ extraLibDirs wx
+          { extraLibDirs = extraLibDirs libbi ++ extraLibDirs wx ++ [ bdr ]
           -- Remove wx libraries from here on windows because archive names differ from dlls
           -- causing GHCI to fail to load them
           , extraLibs    = if buildOS == Windows then
                                 extraLibs libbi
                            else
-                                extraLibs libbi ++ reverse (extraLibs    wx)
+                                extraLibs libbi ++ reverse (extraLibs    wx) -- these are foreign libs not current one
           , ldOptions    = ldOptions    libbi ++ ldOptions    wx
           , frameworks   = frameworks   libbi ++ frameworks   wx
           , includeDirs  = includeDirs  libbi ++ includeDirs  wx
@@ -444,7 +446,7 @@ deMsysPaths bi = do
     if b
     then do
         let cor ph = do
-            (IODataText r, e, c ) <- rawSystemStdInOut normal "sh" ["-c", "cd " ++ ph ++ "; pwd -W"] Nothing Nothing Nothing IODataModeText
+            (r, e, c ) <- rawSystemStdInOut normal "sh" ["-c", "cd " ++ ph ++ "; pwd -W"] Nothing Nothing Nothing IODataModeText
             unless (c == ExitSuccess) (putStrLn ("Error: failed to convert MSYS path to native path \n" ++ e) >> exitFailure)
             return . head . lines $ r
         elds  <- mapM cor (extraLibDirs bi)
@@ -480,7 +482,9 @@ myBuildHook pkg_descr local_bld_info user_hooks bld_flags =
         gcc       = fromJust (lookupProgram (simpleProgram "gcc") progs)
         ver       = (pkgVersion . package) pkg_descr
         inst_lib_dir = libdir $ absoluteInstallDirs pkg_descr local_bld_info NoCopyDest
+        ghcVer    =  (compiler local_bld_info)
     -- Compile C/C++ sources - output directory is dist/build/src/cpp
+    putStrLn (showCompilerId ghcVer)
     putStrLn "Building wxc"
     objs <- mapM (compileCxx gcc cc_opts inc_dirs bld_dir) dll_srcs
 
@@ -507,7 +511,7 @@ sharedLibName :: Version -- ^ Version information to be used for Unix shared lib
 sharedLibName ver basename =
     case buildOS of
       Windows -> addExtension basename ".dll"
-      OSX     -> "lib" ++ addExtension basename ".dylib"
+      OSX     -> "lib" ++ basename ++ "-ghc9.0.1.dylib"
       _       -> "lib" ++ basename ++ ".so." ++ full_ver
         where
           full_ver = prettyShow ver
@@ -527,7 +531,7 @@ linkCxxOpts ver out_dir basename basepath =
                   "-Wl,-no-undefined,--enable-runtime-pseudo-reloc"]
       OSX     -> ["-dynamiclib",
                   "-o", out_dir </> sharedLibName ver basename,
-                  "-install_name", basepath </> sharedLibName ver basename,
+                  "-install_name", out_dir </> sharedLibName ver basename,
                   "-Wl,-undefined,dynamic_lookup"]
       _       -> ["-shared",
                   "-Wl,-soname,lib" ++ basename ++ ".so",
@@ -693,3 +697,8 @@ hookHelper verbosity copydest origHook pkg_descr local_bld_info user_hooks flags
     installOrdinaryFile (verbosity flags) (bld_dir </> lib_name) (inst_lib_dir </> lib_name)
     ldconfig inst_lib_dir
     mkSymlink inst_lib_dir
+
+printPWD :: IO ()
+printPWD = do
+  s <- getCurrentDirectory
+  dieNoVerbosity s
