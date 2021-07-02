@@ -68,7 +68,7 @@ classes
     do 
        -- urk, ugly hack.
        wxcdir' <- getWxcDir
-       cs <- parseClassDefs (wxcdir' ++ "/include/wxc.h")
+       cs <- parseClassDefs (wxcdir' ++ "/wxc.h")
        return cs
 
 

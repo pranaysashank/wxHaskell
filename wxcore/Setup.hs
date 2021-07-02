@@ -7,7 +7,7 @@ import Data.List (foldl', intersperse, intercalate, nub, lookup, isPrefixOf, isI
 import Data.Maybe (fromJust)
 import Distribution.PackageDescription hiding (includeDirs)
 import qualified Distribution.PackageDescription as PD (includeDirs)
-import Distribution.InstalledPackageInfo(installedUnitId, sourcePackageId, includeDirs, libraryDirs)
+import Distribution.InstalledPackageInfo(installedUnitId, sourcePackageId, libraryDirs)
 import Distribution.Simple
 import Distribution.Simple.LocalBuildInfo (LocalBuildInfo, localPkgDescr, installedPkgs, withPrograms, buildDir, installDirTemplates)
 import Distribution.Simple.PackageIndex(SearchResult (..), searchByName, allPackages )
@@ -15,6 +15,7 @@ import Distribution.Simple.Program (ConfiguredProgram (..), lookupProgram, runPr
 import Distribution.Simple.Program.Types
 import Distribution.Simple.Setup (ConfigFlags, BuildFlags)
 import Distribution.System (OS (..), Arch (..), buildOS, buildArch)
+import Distribution.Types.BuildInfo (includeDirs)
 import Distribution.Verbosity (normal, verbose)
 import System.Process (system)
 import System.Directory (createDirectoryIfMissing, doesFileExist, getCurrentDirectory, getModificationTime)
@@ -38,36 +39,15 @@ wxcoreDirectory  = "src" </> "haskell" </> "Graphics" </> "UI" </> "WXCore"
 wxcoreDirectoryQuoted  :: FilePath
 wxcoreDirectoryQuoted  = "\"" ++ wxcoreDirectory ++ "\""
 
-
 -- -- -- -- -- -- -- -- -- -- -- -- -- -- -- -- -- -- -- --
 
--- |This slightly dubious function obtains the install path for the wxc package we are using.
--- It works by finding the wxc package's installation info, then finding the include directory
--- which contains wxc's headers (amongst the wxWidgets include dirs) and then going up a level.
--- It would be nice if the path was part of InstalledPackageInfo, but it isn't.
-wxcInstallDir :: LocalBuildInfo -> IO FilePath
-wxcInstallDir lbi =
-    case searchByName (installedPkgs lbi) "wxc" of
-        Unambiguous (wxc_pkg:_) -> do
-            print wxc_pkg
-            wxc <- filterM (doesFileExist . (</> "wxc.h")) (includeDirs wxc_pkg)
-            case wxc of
-                [wxcIncludeDir] -> return (takeDirectory wxcIncludeDir)
-                [] -> error "wxcInstallDir: couldn't find wxc include dir"
-                _  -> error "wxcInstallDir: I'm confused. I see more than one wxc include directory from the same package"
-        Unambiguous [] -> error "wxcInstallDir: Cabal says wxc is installed but gives no package info for it"
-        _ -> error "wxcInstallDir: Couldn't find wxc package in installed packages"
-
-getwxdirectExe :: LocalBuildInfo -> IO FilePath
-getwxdirectExe lbi =
-    case searchByName (installedPkgs lbi) "wxdirect" of
-        Unambiguous (wxdirect_pkg:_) -> do
-            let wxdirectExe = head (libraryDirs wxdirect_pkg) </> "wxdirect" </> "wxdirect"
-            print wxdirectExe
-            return wxdirectExe
-        Unambiguous [] -> error "getwxdirectExe: Cabal says wxdirect is installed but gives no package info for it"
-        _ -> error "getwxdirectExe: Couldn't find wxdirect package in installed packages"
-
+getWxcHeaderDir :: BuildInfo -> IO FilePath
+getWxcHeaderDir lbi = do
+    wxcHeaderDirs <- filterM (doesFileExist . (</> "wxc/wxc.h")) (includeDirs lbi)
+    case wxcHeaderDirs of
+      [wxcHeaderDir] -> return (wxcHeaderDir </> "wxc")
+      [] -> error "getWxcHeaderDir: couldn't find wxc include directory."
+      _  -> error "getWxcHeaderDir: I'm confused. I see more than one wxc include directory from the same package."
 
 -- -- -- -- -- -- -- -- -- -- -- -- -- -- -- -- -- -- -- --
 
@@ -83,21 +63,20 @@ myConfHook (pkg0, pbi) flags = do
 #endif
 
     lbi <- confHook simpleUserHooks (pkg0, pbi) flags
-    wxcDirectory <- wxcInstallDir lbi
-    -- dieNoVerbosity (show wxcDirectory)
-    let wxcoreIncludeFile  = "\"" ++ wxcDirectory </> "include" </> "wxc.h\""
+    wxcDirectory <- getWxcHeaderDir $ libBuildInfo $ fromJust (library (localPkgDescr lbi))
+    let wxcoreIncludeFile  = "\"" ++ wxcDirectory </> "wxc.h\""
     let wxcDirectoryQuoted = "\"" ++ wxcDirectory ++ "\""
     let system' command    = putStrLn command >> system command
-    wxdirectExe <- getwxdirectExe lbi
+--    wxdirectExe <- getwxdirectExe lbi
 
     putStrLn "Generating class type definitions from .h files"
-    system' $ wxdirectExe ++ " -t --wxc " ++ wxcDirectoryQuoted ++ " -o " ++ wxcoreDirectoryQuoted ++ " " ++ wxcoreIncludeFile
+    system' $ "wxdirect -t --wxc " ++ wxcDirectoryQuoted ++ " -o " ++ wxcoreDirectoryQuoted ++ " " ++ wxcoreIncludeFile
 
     putStrLn "Generating class info definitions"
-    system' $ wxdirectExe ++ " -i --wxc " ++ wxcDirectoryQuoted ++ " -o " ++ wxcoreDirectoryQuoted ++ " " ++ wxcoreIncludeFile
+    system' $ "wxdirect -i --wxc " ++ wxcDirectoryQuoted ++ " -o " ++ wxcoreDirectoryQuoted ++ " " ++ wxcoreIncludeFile
 
     putStrLn "Generating class method definitions from .h files"
-    system' $ wxdirectExe ++ " -c --wxc " ++ wxcDirectoryQuoted ++ " -o " ++ wxcoreDirectoryQuoted ++ " " ++ wxcoreIncludeFile
+    system' $ "wxdirect -c --wxc " ++ wxcDirectoryQuoted ++ " -o " ++ wxcoreDirectoryQuoted ++ " " ++ wxcoreIncludeFile
 
     let lpd       = localPkgDescr lbi
     let lib       = fromJust (library lpd)
@@ -105,12 +84,7 @@ myConfHook (pkg0, pbi) flags = do
     let custom_bi = customFieldsBI libbi
 
     let libbi' = libbi
-          { extraLibDirs   = extraLibDirs   libbi ++ [wxcDirectory]
-          , extraLibs      = extraLibs      libbi
-          , PD.includeDirs = PD.includeDirs libbi ++ case glIncludeDirs of
-                                                         ('-':'I':v) -> [v];
-                                                         _           -> []
-          , ldOptions      = ldOptions      libbi ++ ["-Wl,-rpath," ++ wxcDirectory]  }
+--          { ldOptions      = ldOptions      libbi ++ ["-Wl,-rpath," ++ wxcDirectory]          }
 
     let lib' = lib { libBuildInfo = libbi' }
     let lpd' = lpd { library = Just lib' }

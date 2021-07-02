@@ -3,7 +3,10 @@ packages:
   wxc/
   wxcore/
   wx/
-  samples/wxcore/
+--  samples/wxcore/
   samples/wx/
-  samples/contrib/
-  samples/test/
+-- samples/contrib/
+-- samples/test/
+
+extra-lib-dirs: /Users/pranaysashank/src/wxc/build/lib/
+extra-include-dirs: /Users/pranaysashank/src/wxc/build/include/wxc-1.0

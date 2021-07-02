@@ -85,7 +85,7 @@ getDefaultFiles = getDefaultHeaderFiles
 getDefaultHeaderFiles :: IO [FilePath]
 getDefaultHeaderFiles
   = do wxcdir <- getWxcDir
-       return [wxcdir ++ "/include/wxc.h"]
+       return [wxcdir ++ "/wxc.h"]
 
 getDefaultSTCHeaderFile :: IO [FilePath]
 getDefaultSTCHeaderFile
@@ -95,7 +95,7 @@ getDefaultSTCHeaderFile
 getDefaultOutputDirWxc :: IO FilePath
 getDefaultOutputDirWxc
   = do wxcdir <- getWxcDir
-       return (wxcdir ++ "/include/")
+       return (wxcdir ++ "/")
 
 {-----------------------------------------------------------------------------------------
   Options

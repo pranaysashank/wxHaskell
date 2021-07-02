@@ -1,6 +1,7 @@
 name:         wxcore
 version:      0.93.0.0
 license:      OtherLicense
+cabal-version: 2.0
 license-file: LICENSE
 author:       Daan Leijen
 maintainer:   wxhaskell-devel@lists.sourceforge.net
@@ -19,15 +20,7 @@ description:
 homepage:     https://wiki.haskell.org/WxHaskell
 bug-reports:  https://sourceforge.net/p/wxhaskell/bugs/
 
-cabal-version: >= 1.24
 build-type:    Custom
-
-extra-tmp-files:
-  src/haskell/Graphics/UI/WXCore/WxcClassInfo.hs
-  src/haskell/Graphics/UI/WXCore/WxcClassTypes.hs
-  src/haskell/Graphics/UI/WXCore/WxcClasses.hs
-  src/haskell/Graphics/UI/WXCore/WxcClassesAL.hs
-  src/haskell/Graphics/UI/WXCore/WxcClassesMZ.hs
 
 flag splitBase
   description:  use new split base
@@ -67,15 +60,23 @@ library
   other-modules:
     Graphics.UI.WXCore.GHCiSupport
 
+  autogen-modules:
+    Graphics.UI.WXCore.WxcClassInfo
+    Graphics.UI.WXCore.WxcClassTypes
+    Graphics.UI.WXCore.WxcClasses
+    Graphics.UI.WXCore.WxcClassesAL
+    Graphics.UI.WXCore.WxcClassesMZ
+
   frameworks:
     Carbon
+
+  extra-libraries: wxc
 
   build-depends:
     bytestring,
     filepath,
     parsec,
     stm,
-    wxc >= 0.92,
     wxdirect >= 0.91,
     directory,
     time
@@ -92,7 +93,7 @@ library
       containers >= 0.1 && < 0.3
 
   ghc-options: -Wall
-
+  build-tool-depends: wxdirect:wxdirect
 
 custom-setup
   setup-depends:
