@@ -166,6 +166,11 @@ if(wxWidgets_FOUND)
     target_compile_definitions(wxc PUBLIC ${wxWidgets_DEFINITIONS})
     # and for each of your dependent executable/library targets:
     target_link_libraries(wxc PUBLIC ${wxWidgets_LIBRARIES})
+    math(EXPR wxVersionNumber
+        "${wxWidgets_VERSION_MAJOR} * 1000 + ${wxWidgets_VERSION_MINOR}*100 + ${wxWidgets_VERSION_PATCH}")
+
+    configure_file(${CMAKE_SOURCE_DIR}/wxc_def.h.in
+        ${CMAKE_SOURCE_DIR}/src/include/wxc_def.h @ONLY)
 endif()
 
 target_compile_definitions(wxc PUBLIC wxcREFUSE_MEDIACTRL)
