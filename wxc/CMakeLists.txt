@@ -161,14 +161,30 @@ set_property(TARGET wxc PROPERTY
 find_package(wxWidgets REQUIRED gl base core richtext stc webview xrc
     propgrid qa html adv aui ribbon net)
 
+# NOTE: find_package should try to find a wxWidgets version that is
+# one of the ones in the list, starting from the highest first. That
+# is not what happens currently, we check if the wxWidgets package we
+# found is in one of the compatible versions.
+set(compatibleVersions "3.0;2.9;")
+
 if(wxWidgets_FOUND)
+    set(foundVersion "${wxWidgets_VERSION_MAJOR}.${wxWidgets_VERSION_MINOR}")
+
+    if(NOT(foundVersion IN_LIST compatibleVersions))
+        message(FATAL_ERROR
+            "This library is only compatible with wxWidgets versions: ${compatibleVersions}
+Found wxWidgets version: ${wxWidgets_VERSION_STRING}")
+    endif()
+
     include(${wxWidgets_USE_FILE})
     target_compile_definitions(wxc PUBLIC ${wxWidgets_DEFINITIONS})
     # and for each of your dependent executable/library targets:
     target_link_libraries(wxc PUBLIC ${wxWidgets_LIBRARIES})
-    math(EXPR wxVersionNumber
-        "${wxWidgets_VERSION_MAJOR} * 1000 + ${wxWidgets_VERSION_MINOR}*100 + ${wxWidgets_VERSION_PATCH}")
 
+    # This should work as long as we don't care about version_patch in
+    # compatibleVersions list.
+    math(EXPR wxVersionNumber
+        "${wxWidgets_VERSION_MAJOR} * 1000 + ${wxWidgets_VERSION_MINOR}*100")
     configure_file(${CMAKE_SOURCE_DIR}/wxc_def.h.in
         ${CMAKE_SOURCE_DIR}/src/include/wxc_def.h @ONLY)
 endif()
